@@ -2,7 +2,6 @@ encoding: utf-8
 exclude: [vendor]
 gh_pages_url_prefix: https://sofunretro.github.io/ogx_1p_webconfig/
 gh_url_prefix: https://github.com/SOFUNretro/ogx_1p_webconfig/blob/master
-google_analytics: G-N87L56T313
 gems:
   - jekyll-sitemap
 defaults:
