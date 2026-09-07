@@ -1,3 +1,4 @@
+import { mtu } from "./constants.js";
 import ChromeSamples from "./ChromeSamples.js";
 
 export function presetWriteRecursive(cfg, inputCtrl, ctrl_chrc, data_chrc) {
@@ -8,15 +9,15 @@ export function presetWriteRecursive(cfg, inputCtrl, ctrl_chrc, data_chrc) {
         .then((_) => {
           ChromeSamples.log("Writing Input Data CHRC...");
           var tmpViewSize = cfg.byteLength - inputCtrl[1];
-          if (tmpViewSize > 512) {
-            tmpViewSize = 512;
+          if (tmpViewSize > mtu) {
+            tmpViewSize = mtu;
           }
           var tmpView = new DataView(cfg.buffer, inputCtrl[1], tmpViewSize);
           return data_chrc.writeValue(tmpView);
         })
         .then((_) => {
           ChromeSamples.log("Input Data Written");
-          inputCtrl[1] += Number(512);
+          inputCtrl[1] += tmpViewSize;
           if (inputCtrl[1] < cfg.byteLength) {
             resolve(presetWriteRecursive(cfg, inputCtrl, ctrl_chrc, data_chrc));
           } else {

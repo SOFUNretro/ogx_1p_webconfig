@@ -30,6 +30,40 @@ var name = '';
 var gameid = '';
 var gamename = '';
 var current_cfg = 0;
+const workaroundFirmwareVersion = 'v25.10-beta-25-g67e64a3';
+const inputWriteChunk = 20;
+
+function normalizeFirmwareVersion(value) {
+    return String(value || '').replace(/\0.*$/g, '').trim();
+}
+
+function isXboxOgAdapter() {
+    return /^BlueRetro_XBOX(?:_|$)/.test(String(name || ''));
+}
+
+function isWorkaroundActive() {
+    return isXboxOgAdapter() &&
+        normalizeFirmwareVersion(app_ver) === workaroundFirmwareVersion;
+}
+
+function mapInputSlot(uiSlot) {
+    const slot = Number(uiSlot);
+    if (!isWorkaroundActive()) {
+        return slot;
+    }
+    const uiDevice = slot + 1;
+    if (uiDevice === 1) {
+        return 2; /* UI Device 3 */
+    }
+    if (uiDevice === 3) {
+        return 0; /* UI Device 1 */
+    }
+    return slot;
+}
+
+function loadSelectedInputCfg() {
+    return loadInputCfg(mapInputSlot(document.getElementById('inputSelect').value));
+}
 
 function initGlobalCfg() {
     var divGlobalCfg = document.getElementById("divGlobalCfg");
@@ -917,20 +951,22 @@ function saveOutput() {
 
 function writeWriteRecursive(cfg, inputCtrl, ctrl_chrc, data_chrc) {
     return new Promise(function(resolve, reject) {
+        var tmpViewSize = 0;
         log('Set Input Ctrl CHRC... ' + inputCtrl[1]);
         ctrl_chrc.writeValue(inputCtrl)
         .then(_ => {
-            log('Writing Input Data CHRC...');
-            var tmpViewSize = cfg.byteLength - inputCtrl[1];
-            if (tmpViewSize > 512) {
-                tmpViewSize = 512;
+            tmpViewSize = cfg.byteLength - inputCtrl[1];
+            if (tmpViewSize > inputWriteChunk) {
+                tmpViewSize = inputWriteChunk;
             }
             var tmpView = new DataView(cfg.buffer, inputCtrl[1], tmpViewSize);
-            return data_chrc.writeValue(tmpView);
+            return data_chrc.writeValueWithResponse ?
+                data_chrc.writeValueWithResponse(tmpView) :
+                data_chrc.writeValue(tmpView);
         })
         .then(_ => {
             log('Input Data Written');
-            inputCtrl[1] += Number(512);
+            inputCtrl[1] += Number(tmpViewSize);
             if (inputCtrl[1] < cfg.byteLength) {
                 resolve(writeWriteRecursive(cfg, inputCtrl, ctrl_chrc, data_chrc));
             }
@@ -1001,11 +1037,18 @@ function saveInput() {
         cfg[j++] = Number(scaling[i].value) | (Number(diag[i].value) << 4);
     }
 
+    var targetId = mapInputSlot(Number(cfgId));
+    if (isWorkaroundActive()) {
+        for (var i = 3; i < cfg.byteLength; i += 8) {
+            cfg[i + 2] = targetId;
+        }
+    }
+
     return new Promise(function(resolve, reject) {
-        writeInputCfg(cfgId, cfg)
+        writeInputCfg(targetId, cfg)
         .then(_ => {
             document.getElementById("inputSaveText").style.display = 'block';
-            log('Input ' + cfgId + ' Config saved');
+            log('Input ' + targetId + ' Config saved');
             resolve();
         })
         .catch(error => {
@@ -1039,7 +1082,7 @@ function swGameIdCfg() {
         return loadOutputCfg(0);
     })
     .then(() => {
-        return loadInputCfg(0);
+        return loadSelectedInputCfg();
     })
 }
 
@@ -1057,7 +1100,7 @@ function swDefaultCfg() {
         return loadOutputCfg(0);
     })
     .then(() => {
-        return loadInputCfg(0);
+        return loadSelectedInputCfg();
     })
 }
 
@@ -1133,7 +1176,7 @@ export function btConn() {
         return getAppVersion(brService);
     })
     .then(value => {
-        app_ver = value;
+        app_ver = normalizeFirmwareVersion(value);
         return getGameId(brService);
     })
     .then(value => {
@@ -1162,7 +1205,7 @@ export function btConn() {
         return loadOutputCfg(0);
     })
     .then(() => {
-        return loadInputCfg(0);
+        return loadSelectedInputCfg();
     })
     .then(() => {
         document.getElementById("divInfo").innerHTML = 'Connected to: ' + name + ' (' + bdaddr + ') [' + app_ver
@@ -1214,7 +1257,7 @@ function selectOutput() {
 }
 
 function selectInput() {
-    loadInputCfg(this.value);
+    loadInputCfg(mapInputSlot(this.value));
 }
 
 function changeSrcLabel() {
